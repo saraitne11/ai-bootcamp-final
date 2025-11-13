@@ -48,7 +48,7 @@ async def upload_document(
         # 2. PDF -> 마크다운 파싱 및 저장
         base_filename = os.path.splitext(pdf_filename)[0]
         md_filename = base_filename + ".md"
-        md_path = parse_pdf_to_markdown(pdf_bytes, md_filename)
+        md_path = parse_pdf_to_markdown(pdf_path, md_filename)
 
         if not md_path:
             raise HTTPException(status_code=500, detail="PDF 파싱 중 오류가 발생했습니다.")

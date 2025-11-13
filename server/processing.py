@@ -1,5 +1,6 @@
 import os
-import fitz  # PyMuPDF
+# import fitz  # PyMuPDF
+import pymupdf4llm
 from typing import List
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
@@ -14,7 +15,7 @@ PDF_FOLDER_PATH = "data/pdf"
 VECTOR_STORE_PATH = "data/vector_store/faiss_index"
 
 
-def parse_pdf_to_markdown(pdf_bytes: bytes, md_filename: str) -> str:
+def parse_pdf_to_markdown(pdf_path: str, md_filename: str) -> str:
     """
     PDF 바이트 데이터를 받아 텍스트를 추출하고 마크다운 파일로 저장합니다.
     PyMuPDF를 사용하여 텍스트를 블록 단위로 추출합니다.
@@ -25,21 +26,11 @@ def parse_pdf_to_markdown(pdf_bytes: bytes, md_filename: str) -> str:
     md_path = os.path.join(MD_FOLDER_PATH, md_filename)
 
     try:
-        # PyMuPDF로 PDF 열기
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        md_content = ""
+        # PyMuPDF4LLM을 사용하여 바이트 데이터로부터 직접 마크다운 생성
+        # to_markdown()는 표, 제목, 단락 구조를 인식하여 변환합니다.
+        md_content = pymupdf4llm.to_markdown(pdf_path)
 
-        for page in doc:
-            # 텍스트 블록을 추출 (단락 유지에 유리)
-            blocks = page.get_text("blocks")
-            for block in blocks:
-                text = block[4]  # 블록의 텍스트 내용
-                # 간단한 마크다운 형식 추가 (예: 제목으로 추정되는 짧은 텍스트)
-                if len(text.splitlines()) == 1 and len(text) < 80:
-                    md_content += f"## {text.strip()}\n\n"
-                else:
-                    md_content += f"{text.strip()}\n\n"
-
+        # 변환된 마크다운을 파일로 저장
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(md_content)
 
