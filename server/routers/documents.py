@@ -30,7 +30,7 @@ async def upload_document(
     3. 'server/md/' 폴더 전체를 다시 읽어 Vector Store를 재구축하고 저장합니다.
     4. 재구축된 Vector Store를 app.state.vector_store에 업데이트합니다.
     """
-    if not file.filename.endswith(".pdf"):
+    if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="PDF 파일만 업로드할 수 있습니다.")
 
     # 1. PDF 파일 저장
@@ -46,7 +46,8 @@ async def upload_document(
             f.write(pdf_bytes)
 
         # 2. PDF -> 마크다운 파싱 및 저장
-        md_filename = pdf_filename.replace(".pdf", ".md")
+        base_filename = os.path.splitext(pdf_filename)[0]
+        md_filename = base_filename + ".md"
         md_path = parse_pdf_to_markdown(pdf_bytes, md_filename)
 
         if not md_path:

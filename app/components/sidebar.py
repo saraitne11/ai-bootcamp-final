@@ -6,7 +6,7 @@ from components.history import render_history_ui
 
 # API 엔드포인트 기본 URL
 load_dotenv()
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
+API_BASE_URL = os.environ.get("API_BASE_URL")
 
 
 def handle_pdf_upload():
@@ -21,7 +21,7 @@ def handle_pdf_upload():
         with st.spinner(f"'{file.name}' 업로드 및 처리 중... (파일 크기에 따라 시간이 걸릴 수 있습니다)"):
             try:
                 response = requests.post(
-                    f"{API_BASE_URL}/api/v1/documents/upload",
+                    f"{API_BASE_URL}/documents/upload",
                     files=files
                 )
                 if response.status_code == 200:
@@ -44,7 +44,7 @@ def display_processed_files():
     st.markdown("---")
     st.subheader("처리된 문서 목록")
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/documents/")
+        response = requests.get(f"{API_BASE_URL}/documents/")
         if response.status_code == 200:
             files = response.json()
             if not files:

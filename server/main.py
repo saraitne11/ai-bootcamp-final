@@ -1,6 +1,5 @@
 import uvicorn
 import os
-import ssl
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,14 +12,9 @@ import db.models
 from routers import chat, documents, chat_workflow
 
 # Vector DB 초기화를 위한 import
-from processing import (
-    load_md_documents,
-    build_persistent_vector_store,
-    load_persistent_vector_store,
-    MD_FOLDER_PATH,
-    PDF_FOLDER_PATH,
-    VECTOR_STORE_PATH
-)
+from processing import load_md_documents, build_persistent_vector_store, load_persistent_vector_store
+from processing import MD_FOLDER_PATH, PDF_FOLDER_PATH, VECTOR_STORE_PATH
+
 from utils.config import get_embeddings, settings
 
 

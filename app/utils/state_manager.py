@@ -33,7 +33,7 @@ def reset_chat_session():
     try:
         # 백엔드에 새 세션 생성을 요청 (기본 주제)
         response = requests.post(
-            f"{API_BASE_URL}/api/v1/chats/",
+            f"{API_BASE_URL}/chats/",
             json={"topic": "새 채팅"}  # 첫 질문을 topic으로 하려했으나, 새 채팅 시점엔 알 수 없음
         )
         if response.status_code == 200 or response.status_code == 201:

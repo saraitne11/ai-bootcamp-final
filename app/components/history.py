@@ -7,13 +7,13 @@ from utils.state_manager import reset_chat_session, load_chat_session
 
 # API 엔드포인트 기본 URL
 load_dotenv()
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
+API_BASE_URL = os.environ.get("API_BASE_URL")
 
 
 def fetch_chat_sessions():
     """API를 통해 모든 채팅 세션 목록을 가져옵니다."""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/chats/")
+        response = requests.get(f"{API_BASE_URL}/chats/")
         if response.status_code == 200:
             sessions = response.json()
             # (id, topic, created_at) 튜플 리스트로 반환
@@ -32,7 +32,7 @@ def fetch_chat_sessions():
 def fetch_chat_session(session_id: int):
     """API를 통해 특정 채팅 세션의 모든 메시지를 가져옵니다."""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/chats/{session_id}")
+        response = requests.get(f"{API_BASE_URL}/chats/{session_id}")
         if response.status_code == 200:
             session_data = response.json()
             topic = session_data["topic"]
@@ -53,7 +53,7 @@ def fetch_chat_session(session_id: int):
 def delete_chat_session(session_id: int):
     """API를 통해 특정 채팅 세션을 삭제합니다."""
     try:
-        response = requests.delete(f"{API_BASE_URL}/api/v1/chats/{session_id}")
+        response = requests.delete(f"{API_BASE_URL}/chats/{session_id}")
         if response.status_code == 200:
             st.success("채팅 이력이 삭제되었습니다.")
             return True
@@ -75,7 +75,7 @@ def delete_all_chat_sessions():
 
         success = True
         for session_id, _, _ in sessions:
-            response = requests.delete(f"{API_BASE_URL}/api/v1/chats/{session_id}")
+            response = requests.delete(f"{API_BASE_URL}/chats/{session_id}")
             if response.status_code != 200:
                 success = False
 

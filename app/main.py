@@ -77,7 +77,7 @@ def handle_chat_input(prompt: str):
 
         try:
             with requests.post(
-                    f"{API_BASE_URL}/api/v1/chat/stream",
+                    f"{API_BASE_URL}/chat/stream",
                     json=data,
                     stream=True,
                     headers={"Content-Type": "application/json"},
