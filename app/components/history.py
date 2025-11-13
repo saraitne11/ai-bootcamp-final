@@ -1,188 +1,141 @@
 from dotenv import load_dotenv
 import os
-
 import streamlit as st
 import requests
 import json
-from utils.state_manager import reset_session_state
-
+from utils.state_manager import reset_chat_session, load_chat_session
 
 # API 엔드포인트 기본 URL
 load_dotenv()
-API_BASE_URL = os.environ.get("API_BASE_URL")
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
 
 
-# API로 토론 이력 조회
-def fetch_debate_history():
-    """API를 통해 토론 이력 가져오기"""
+def fetch_chat_sessions():
+    """API를 통해 모든 채팅 세션 목록을 가져옵니다."""
     try:
-        response = requests.get(f"{API_BASE_URL}/debates/")
+        response = requests.get(f"{API_BASE_URL}/api/v1/chats/")
         if response.status_code == 200:
-            debates = response.json()
-            # API 응답 형식에 맞게 데이터 변환 (id, topic, date, rounds)
+            sessions = response.json()
+            # (id, topic, created_at) 튜플 리스트로 반환
             return [
-                (debate["id"], debate["topic"], debate["created_at"], debate["rounds"])
-                for debate in debates
+                (s["id"], s["topic"], s["created_at"])
+                for s in sessions
             ]
         else:
-            st.error(f"토론 이력 조회 실패: {response.status_code}")
+            st.error(f"채팅 이력 조회 실패: {response.status_code}")
             return []
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"API 호출 오류: {str(e)}")
         return []
 
 
-# API로 특정 토론 데이터 조회
-def fetch_debate_by_id(debate_id):
-    """API를 통해 특정 토론 데이터 가져오기"""
+def fetch_chat_session(session_id: int):
+    """API를 통해 특정 채팅 세션의 모든 메시지를 가져옵니다."""
     try:
-        response = requests.get(f"{API_BASE_URL}/debates/{debate_id}")
+        response = requests.get(f"{API_BASE_URL}/api/v1/chats/{session_id}")
         if response.status_code == 200:
-            debate = response.json()
-            topic = debate["topic"]
-            # 실제 API 응답 구조에 맞게 변환 필요
-            messages = (
-                json.loads(debate["messages"])
-                if isinstance(debate["messages"], str)
-                else debate["messages"]
-            )
-            docs = (
-                json.loads(debate["docs"])
-                if isinstance(debate["docs"], str)
-                else debate.get("docs", {})
-            )
-            return topic, messages, docs
+            session_data = response.json()
+            topic = session_data["topic"]
+            # 메시지 포맷 변환 (role, content만 추출)
+            messages = [
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in session_data.get("messages", [])
+            ]
+            return topic, messages
         else:
-            st.error(f"토론 데이터 조회 실패: {response.status_code}")
-            return None, None, None
-    except Exception as e:
+            st.error(f"채팅 데이터 조회 실패: {response.status_code}")
+            return None, None
+    except requests.RequestException as e:
         st.error(f"API 호출 오류: {str(e)}")
-        return None, None, None
+        return None, None
 
 
-# API로 토론 삭제
-def delete_debate_by_id(debate_id):
-    """API를 통해 특정 토론 삭제"""
+def delete_chat_session(session_id: int):
+    """API를 통해 특정 채팅 세션을 삭제합니다."""
     try:
-        response = requests.delete(f"{API_BASE_URL}/debates/{debate_id}")
+        response = requests.delete(f"{API_BASE_URL}/api/v1/chats/{session_id}")
         if response.status_code == 200:
-            st.success("토론이 삭제되었습니다.")
+            st.success("채팅 이력이 삭제되었습니다.")
             return True
         else:
-            st.error(f"토론 삭제 실패: {response.status_code}")
+            st.error(f"채팅 삭제 실패: {response.status_code}")
             return False
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"API 호출 오류: {str(e)}")
         return False
 
 
-# API로 모든 토론 삭제
-def delete_all_debates():
-    """API를 통해 모든 토론 삭제"""
+def delete_all_chat_sessions():
+    """API를 통해 모든 채팅 세션을 삭제합니다."""
     try:
-        # 모든 토론 목록 조회
-        debates = fetch_debate_history()
-        if not debates:
+        sessions = fetch_chat_sessions()
+        if not sessions:
+            st.info("삭제할 채팅 이력이 없습니다.")
             return True
 
-        # 각 토론 항목 삭제
         success = True
-        for debate_id, _, _, _ in debates:
-            response = requests.delete(f"{API_BASE_URL}/debates/{debate_id}")
+        for session_id, _, _ in sessions:
+            response = requests.delete(f"{API_BASE_URL}/api/v1/chats/{session_id}")
             if response.status_code != 200:
                 success = False
 
         if success:
-            st.success("모든 토론이 삭제되었습니다.")
+            st.success("모든 채팅 이력이 삭제되었습니다.")
         return success
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"API 호출 오류: {str(e)}")
         return False
 
 
-# API로 토론 저장
-def save_debate(topic, rounds, messages, docs=None):
-    """API를 통해 토론 결과를 데이터베이스에 저장"""
-    try:
-        # API 요청 데이터 준비
-        debate_data = {
-            "topic": topic,
-            "rounds": rounds,
-            "messages": (
-                json.dumps(messages) if not isinstance(messages, str) else messages
-            ),
-            "docs": (
-                json.dumps(docs)
-                if docs and not isinstance(docs, str)
-                else (docs or "{}")
-            ),
-        }
-
-        response = requests.post(f"{API_BASE_URL}/debates/", json=debate_data)
-
-        if response.status_code == 200 or response.status_code == 201:
-            st.success("토론이 성공적으로 저장되었습니다.")
-            return response.json().get("id")  # 저장된 토론 ID 반환
-        else:
-            st.error(f"토론 저장 실패: {response.status_code} - {response.text}")
-            return None
-    except Exception as e:
-        st.error(f"API 호출 오류: {str(e)}")
-        return None
-
-
-# 토론 이력 UI 렌더링
 def render_history_ui():
+    """채팅 이력 탭의 UI를 렌더링합니다."""
 
-    col1, col2 = st.columns([1, 1])
-
+    col1, col2 = st.columns(2)
     with col1:
-        if st.button("이력 새로고침", use_container_width=True):
+        if st.button("새로고침", use_container_width=True):
             st.rerun()
-
     with col2:
-        if st.button("전체 이력 삭제", type="primary", use_container_width=True):
-            if delete_all_debates():
+        if st.button("전체 삭제", type="primary", use_container_width=True):
+            if delete_all_chat_sessions():
+                reset_chat_session()  # 세션 상태도 초기화
                 st.rerun()
 
-    # 토론 이력 로드
-    debate_history = fetch_debate_history()
+    st.markdown("---")
 
-    if not debate_history:
-        st.info("저장된 토론 이력이 없습니다.")
+    # 채팅 이력 로드
+    chat_history = fetch_chat_sessions()
+
+    if not chat_history:
+        st.info("저장된 채팅 이력이 없습니다.")
     else:
-        render_history_list(debate_history)
+        # 스크롤 가능한 컨테이너에 이력 표시
+        container = st.container(height=400, border=False)
+        render_history_list(container, chat_history)
 
 
-# 토론 이력 목록 렌더링
-def render_history_list(debate_history):
-    for id, topic, date, rounds in debate_history:
-        with st.container(border=True):
-
-            # 토론 주제
-            st.write(f"***{topic}***")
+def render_history_list(container, chat_history):
+    """채팅 이력 목록을 렌더링합니다."""
+    for session_id, topic, date in chat_history:
+        with container.container(border=True):
+            # 채팅 주제 (첫 질문)
+            st.write(f"**{topic[:50]}...**")  # 너무 길면 잘라내기
 
             col1, col2, col3 = st.columns([3, 1, 1])
-            # 토론 정보
             with col1:
-                st.caption(f"날짜: {date} | 라운드: {rounds}")
+                st.caption(f"ID: {session_id} | {date.split('T')[0]}")
 
-            # 보기 버튼
             with col2:
-                if st.button("보기", key=f"view_{id}", use_container_width=True):
-                    topic, messages, docs = fetch_debate_by_id(id)
-                    if topic and messages:
-                        st.session_state.viewing_history = True
-                        st.session_state.messages = messages
-                        st.session_state.loaded_topic = topic
-                        st.session_state.loaded_debate_id = id
-                        st.session_state.docs = docs
-                        st.session_state.app_mode = "results"
+                if st.button("보기", key=f"view_{session_id}", use_container_width=True):
+                    topic, messages = fetch_chat_session(session_id)
+                    if topic is not None and messages is not None:
+                        # state_manager를 통해 세션 상태 로드
+                        load_chat_session(session_id, topic, messages)
                         st.rerun()
 
-            # 삭제 버튼
             with col3:
-                if st.button("삭제", key=f"del_{id}", use_container_width=True):
-                    if delete_debate_by_id(id):
-                        reset_session_state()
+                if st.button("삭제", key=f"del_{session_id}", use_container_width=True):
+                    if delete_chat_session(session_id):
+                        # 만약 현재 보고 있는 채팅을 삭제했다면, 새 채팅으로 리셋
+                        if st.session_state.current_chat_id == session_id:
+                            reset_chat_session()
                         st.rerun()

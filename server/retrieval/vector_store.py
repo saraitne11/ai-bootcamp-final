@@ -1,35 +1,26 @@
 import streamlit as st
 from langchain_community.vectorstores import FAISS
-from typing import Any, Dict, Optional, List
-from retrieval.search_service import get_search_content, improve_search_query
-from utils.config import get_embeddings
+from typing import List, Dict, Any
+from langchain.schema import Document
 
 
-def get_topic_vector_store(
-    topic: str, role: str, language: str = "ko"
-) -> Optional[FAISS]:
+def search_vector_store(query: str, vector_store: FAISS, k: int = 5) -> List[Document]:
+    """
+    메모리에 로드된 FAISS Vector Store에서 Similarity Search를 수행합니다.
 
-    # 검색어 개선
-    improved_queries = improve_search_query(topic, role)
-    # 개선된 검색어로 검색 콘텐츠 가져오기
-    documents = get_search_content(improved_queries, language)
-    if not documents:
-        return None
-    try:
-        return FAISS.from_documents(documents, get_embeddings())
-    except Exception as e:
-        st.error(f"Vector DB 생성 중 오류 발생: {str(e)}")
-        return None
-
-
-def search_topic(topic: str, role: str, query: str, k: int = 5) -> List[Dict[str, Any]]:
-    # 문서를 검색해서 벡터 스토어 생성
-    vector_store = get_topic_vector_store(topic, role)
+    :param query: 사용자 검색어
+    :param vector_store: app.state.vector_store에서 전달된 FAISS 인스턴스
+    :param k: 반환할 문서 개수
+    :return: Document 리스트
+    """
     if not vector_store:
+        st.warning("Vector Store가 아직 준비되지 않았습니다. 문서를 업로드하세요.")
         return []
+
     try:
-        # 벡터 스토어에서 Similarity Search 수행
+        # FAISS 인스턴스에서 직접 검색 수행
         return vector_store.similarity_search(query, k=k)
     except Exception as e:
-        st.error(f"검색 중 오류 발생: {str(e)}")
+        # Streamlit이 아닌 FastAPI B/E이므로 st.error 대신 print/logging 사용
+        print(f"Vector store 검색 중 오류 발생: {str(e)}")
         return []
