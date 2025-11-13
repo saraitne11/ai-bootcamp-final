@@ -74,30 +74,30 @@ def handle_chat_input(prompt: str):
     with st.chat_message("assistant"):
         placeholder = st.empty()
         full_response = ""
+        with st.spinner("응답 생성 중..."):
+            try:
+                with requests.post(
+                        f"{API_BASE_URL}/chat/stream",
+                        json=data,
+                        stream=True,
+                        headers={"Content-Type": "application/json"},
+                        timeout=300  # 5분 타임아웃
+                ) as response:
+                    if response.status_code != 200:
+                        st.error(f"API 오류: {response.status_code} - {response.text}")
+                        return
 
-        try:
-            with requests.post(
-                    f"{API_BASE_URL}/chat/stream",
-                    json=data,
-                    stream=True,
-                    headers={"Content-Type": "application/json"},
-                    timeout=300  # 5분 타임아웃
-            ) as response:
-                if response.status_code != 200:
-                    st.error(f"API 오류: {response.status_code} - {response.text}")
-                    return
+                    for chunk in response.iter_lines():
+                        content = process_streaming_response(chunk)
+                        if content:
+                            full_response += content
+                            placeholder.markdown(full_response + "▌")
 
-                for chunk in response.iter_lines():
-                    content = process_streaming_response(chunk)
-                    if content:
-                        full_response += content
-                        placeholder.markdown(full_response + "▌")
+                placeholder.markdown(full_response)
 
-            placeholder.markdown(full_response)
-
-        except requests.RequestException as e:
-            st.error(f"API 요청 오류: {str(e)}")
-            return
+            except requests.RequestException as e:
+                st.error(f"API 요청 오류: {str(e)}")
+                return
 
     # 5. 전체 AI 응답을 세션 상태에 추가
     # (B/E가 이미 DB에 저장했으므로, 이것은 순전히 현재 UI 표시용)

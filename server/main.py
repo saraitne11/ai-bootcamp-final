@@ -17,6 +17,7 @@ from processing import MD_FOLDER_PATH, PDF_FOLDER_PATH, VECTOR_STORE_PATH
 
 from utils.config import get_embeddings, settings
 
+from workflow.graph import get_compiled_graph
 
 
 # FastAPI 인스턴스 생성 (프로젝트명 변경)
@@ -66,13 +67,19 @@ def startup_event():
         print(f"Vector Store 초기화 중 오류 발생: {e}")
         app.state.vector_store = None
 
-# 3. 데이터베이스 테이블 생성
-# (ChatSession, ChatMessage 테이블)
+    # --- 3. LangGraph 컴파일 ---
+    # Vector Store 로드가 완료된 후, 이를 인자로 전달하여 그래프를 컴파일합니다.
+    # 컴파일된 그래프는 graph.graph.compiled_graph에 전역 변수로 저장됩니다.
+    get_compiled_graph(app.state.vector_store)
+    print("LangGraph가 Vector Store로 컴파일되었습니다.")
+    # --- End ---
+
+# 4. 데이터베이스 테이블 생성
 print("데이터베이스 테이블 생성 중...")
 Base.metadata.create_all(bind=engine)
 print("데이터베이스 테이블 생성 완료.")
 
-# 4. 라우터 추가
+# 5. 라우터 추가
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(chat_workflow.router)

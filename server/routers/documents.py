@@ -9,6 +9,7 @@ from processing import parse_pdf_to_markdown, load_md_documents, build_persisten
 from processing import MD_FOLDER_PATH, VECTOR_STORE_PATH
 
 from utils.config import get_embeddings
+from workflow.graph import get_compiled_graph
 
 # /api/v1/documents 경로로 라우터 설정
 router = APIRouter(
@@ -74,6 +75,14 @@ async def upload_document(
         request.app.state.vector_store = new_vector_store
         print("Vector Store 재구축 및 앱 상태 업데이트 완료.")
 
+        # 5. LangGraph 재컴파일
+        try:
+            get_compiled_graph(new_vector_store)
+            print("LangGraph가 새 Vector Store로 재컴파일되었습니다.")
+        except Exception as e:
+            print(f"LangGraph 재컴파일 중 오류 발생: {e}")
+            # 오류가 발생해도 일단 업로드는 성공으로 처리하되, 로깅
+            pass
         return {"filename": file.filename, "md_path": md_path, "detail": "업로드 및 Vector Store 재구축 성공"}
 
     except Exception as e:
