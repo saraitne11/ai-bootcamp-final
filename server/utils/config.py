@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+from sentence_transformers import CrossEncoder
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -34,6 +35,11 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
+    def get_reranker(self):
+        # RAG Reranking에 널리 사용되는 경량 모델
+        model_name = 'local_models/ms-marco-reranker'
+        return CrossEncoder(model_name)
+
     def get_llm(self):
         """Azure OpenAI LLM 인스턴스를 반환합니다."""
         return AzureChatOpenAI(
@@ -55,6 +61,7 @@ class Settings(BaseSettings):
         )
 
 
+
 # 설정 인스턴스 생성
 settings = Settings()
 
@@ -66,6 +73,9 @@ def get_llm():
 
 def get_embeddings():
     return settings.get_embeddings()
+
+def get_reranker():
+    return settings.get_reranker()
 
 
 if __name__ == "__main__":

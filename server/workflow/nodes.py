@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnablePassthrough
 from pydantic import BaseModel, Field
 
 # --- 기존 코드에서 Import ---
-from utils.config import get_llm
+from utils.config import get_llm, get_reranker
 from retrieval.vector_store import search_vector_store
 from workflow.state import GraphState
 
@@ -109,7 +109,7 @@ def node_retrieve_documents(state: GraphState, vector_store: any):
 
     try:
         # 기존 retrieval/vector_store.py의 함수 사용
-        documents = search_vector_store(query=query, vector_store=vector_store, k=3)
+        documents = search_vector_store(query=query, vector_store=vector_store, k=10)
         print(f"문서 {len(documents)}개 검색됨")
         return {"documents": documents}
     except Exception as e:
@@ -117,62 +117,71 @@ def node_retrieve_documents(state: GraphState, vector_store: any):
         return {"documents": []}
 
 
-# --- 4. 문서 검증 노드 (조건부 엣지용) ---
-
-class GraderResult(BaseModel):
-    """문서 관련성 평가 결과 ('yes' 또는 'no')"""
-    decision: Literal["yes", "no"] = Field(
-        description="검색된 문서가 사용자 질문에 답변하기에 관련성이 높은지 여부 ('yes' 또는 'no')"
-    )
-
-
-def edge_grade_documents(state: GraphState) -> Literal["generate_rag", "generate_normal"]:
-    """검색된 문서가 원본 질문과 관련성이 있는지 평가합니다."""
-    print("--- 4. 문서 검증 엣지 ---")
-
-    if not state.get("documents"):
-        print("검증: 문서 없음 -> 일반 답변")
-        return "generate_normal"  # 문서가 아예 없으면
-
-    llm = get_llm()
-    structured_llm = llm.with_structured_output(GraderResult, method="json_mode")
-
-    system_prompt = """당신은 AI 평가자입니다. 
-    사용자의 원본 질문과 검색된 문서 목록을 보고, 문서가 질문에 답변하기에 충분히 관련성이 있는지 'yes' 또는 'no'로만 답하세요.
-
-    <원본 질문>
-    {question}
-
-    <검색된 문서 요약>
-    {documents_str}
+# --- 4. [신규] Rerank 노드 ---
+def node_rerank_documents(state: GraphState):
     """
-    prompt = ChatPromptTemplate.from_messages(system_prompt)
-    chain = prompt | structured_llm
+    검색된(Retrieve) 문서들을 Reranker(Cross-Encoder)를 사용해
+    쿼리와의 관련성 점수를 다시 매기고, 관련성 높은 순으로 정렬합니다.
+    """
+    print("--- 4. Rerank 노드 ---")
 
-    docs_str = "\n---\n".join([doc.page_content[:200] + "..." for doc in state["documents"]])  # 요약
+    reranker = get_reranker()
+    query = state.get("transformed_query")
+    documents = state.get("documents")
+
+    if not documents:
+        print("Rerank: 문서 없음. 단계를 건너뜁니다.")
+        return {"documents": []}
 
     try:
-        result = chain.invoke({
-            "question": state["original_query"],
-            "documents_str": docs_str
-        })
+        # Reranker는 (query, document_text) 쌍의 리스트를 입력으로 받습니다.
+        pairs = [(query, doc.page_content) for doc in documents]
 
-        if result.decision == "yes":
-            print("검증: 관련성 높음 -> RAG 답변")
-            return "generate_rag"
-        else:
-            print("검증: 관련성 낮음 -> 일반 답변")
-            return "generate_normal"
+        # Reranker 모델로 점수 계산
+        scores = reranker.predict(pairs)
+
+        # (점수, 문서) 쌍으로 묶은 뒤, 점수가 높은 순(내림차순)으로 정렬
+        reranked_docs_with_scores = sorted(
+            zip(scores, documents),
+            key=lambda x: x[0],
+            reverse=True
+        )
+
+        # 일정 점수(Threshold) 이상의 문서만 필터링합니다. (예: 0.5)
+        # (이 Threshold는 Reranker 모델과 태스크에 따라 조정이 필요합니다.)
+        threshold = 0.5
+        final_documents = [
+            doc for score, doc in reranked_docs_with_scores if score > threshold
+        ]
+
+        print(f"Rerank 완료: {len(documents)}개 -> {len(final_documents)}개 필터링됨 (Threshold: {threshold})")
+
+        return {"documents": final_documents}
+
     except Exception as e:
-        print(f"문서 검증 실패 (기본값 'generate_normal'): {e}")
+        print(f"Rerank 중 오류 발생: {e}")
+        return {"documents": []}  # 오류 시 빈 리스트 반환
+
+# --- 5. 문서 검증 노드 (조건부 엣지용) ---
+def edge_grade_documents(state: GraphState) -> Literal["generate_rag", "generate_normal"]:
+    """
+    Rerank 노드를 거친 후, 최종적으로 질문에 사용할 문서가 남아있는지 확인합니다.
+    """
+    print("--- 5. 문서 검증 엣지 (Rerank 후) ---")
+
+    if state.get("documents"):
+        print("검증: 관련성 높은 문서 있음 -> RAG 답변")
+        return "generate_rag"
+    else:
+        print("검증: 관련성 높은 문서 없음 -> 일반 답변")
         return "generate_normal"
 
 
-# --- 5. 답변 생성 노드 (RAG) ---
+# --- 6. 답변 생성 노드 (RAG) ---
 
 async def node_generate_rag_answer(state: GraphState):  # 'async def'로 변경
     """문서(Context)와 채팅 이력을 바탕으로 최종 답변을 스트리밍 생성합니다."""
-    print("--- 5a. RAG 답변 생성 노드 ---")
+    print("--- 6a. RAG 답변 생성 노드 ---")
 
     # ... (기존 system_prompt 및 context 포맷팅 코드) ...
     system_prompt = """
@@ -224,7 +233,7 @@ async def node_generate_rag_answer(state: GraphState):  # 'async def'로 변경
 
 async def node_generate_normal_answer(state: GraphState):  # 'async def'로 변경
     """문서 없이 채팅 이력만으로 일반 답변(잡담 또는 정보 없음)을 스트리밍 생성합니다."""
-    print("--- 5b. 일반 답변 생성 노드 ---")
+    print("--- 6b. 일반 답변 생성 노드 ---")
 
     # ... (기존 system_prompt 코드) ...
     system_prompt = """

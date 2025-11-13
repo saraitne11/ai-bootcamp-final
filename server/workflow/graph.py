@@ -2,7 +2,7 @@ from functools import partial
 from langgraph.graph import StateGraph, END
 
 from workflow.state import GraphState
-from workflow.nodes import node_classify_intent, node_transform_query, node_retrieve_documents, edge_grade_documents, node_generate_rag_answer, node_generate_normal_answer
+from workflow.nodes import node_classify_intent, node_transform_query, node_retrieve_documents, node_rerank_documents, edge_grade_documents, node_generate_rag_answer, node_generate_normal_answer
 
 
 def build_graph(vector_store: any):
@@ -17,13 +17,18 @@ def build_graph(vector_store: any):
     workflow.add_node("classify_intent", node_classify_intent)
     workflow.add_node("transform_query", node_transform_query)
 
-    # node_retrieve_documents는 vector_store 인자가 필요하므로 partial로 바인딩
+    # Vector Store 바인딩
     retrieve_partial = partial(node_retrieve_documents, vector_store=vector_store)
     workflow.add_node("retrieve_documents", retrieve_partial)
 
-    # 답변 생성 노드들은 스트리밍을 위해 .astream()을 반환합니다.
+    # Reranker 바인딩
+    rerank_partial = partial(node_rerank_documents)
+    workflow.add_node("rerank_documents", rerank_partial)
+
+    # 답변 생성 노드
     workflow.add_node("generate_rag_answer", node_generate_rag_answer)
     workflow.add_node("generate_normal_answer", node_generate_normal_answer)
+
 
     # --- 2. 엣지(흐름) 정의 ---
 
@@ -42,10 +47,11 @@ def build_graph(vector_store: any):
 
     # 2-3. RAG 경로
     workflow.add_edge("transform_query", "retrieve_documents")
+    workflow.add_edge("retrieve_documents", "rerank_documents")
 
     # 2-4. RAG 검증 분기
     workflow.add_conditional_edges(
-        "retrieve_documents",
+        "rerank_documents",
         edge_grade_documents,  # 검증 함수 실행
         {
             "generate_rag": "generate_rag_answer",  # 관련성 높음 -> RAG 답변
@@ -65,9 +71,8 @@ def build_graph(vector_store: any):
 
 
 # --- FastAPI 앱에서 사용할 컴파일된 그래프 ---
-# 이 부분은 FastAPI 서버 시작 시(main.py) 한번만 호출되어야 합니다.
-# 하지만 현재 구조(app.state.vector_store)에서는
-# vector_store가 로드된 후 그래프를 생성해야 합니다.
+# 이 부분은 FastAPI 서버 시작 시(main.py) 한번만 호출되어야 함.
+# 하지만 현재 구조(app.state.vector_store)에서는 vector_store가 로드된 후 그래프를 생성해야 함.
 # 우선 빈 그래프(None)로 두고, main.py에서 초기화하도록 수정합니다.
 compiled_graph = None
 
