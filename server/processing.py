@@ -69,7 +69,7 @@ def load_md_documents(md_folder_path: str) -> List[Document]:
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=100,
-        length_function=len
+        separators=["\n\n", "\n", " ", ""]  # 분할 기준
     )
     return text_splitter.split_documents(documents)
 

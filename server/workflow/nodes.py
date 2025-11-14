@@ -149,10 +149,13 @@ def node_rerank_documents(state: GraphState):
 
         # 일정 점수(Threshold) 이상의 문서만 필터링합니다. (예: 0.5)
         # (이 Threshold는 Reranker 모델과 태스크에 따라 조정이 필요합니다.)
-        threshold = 0.5
+        threshold = 0.7
         final_documents = [
             doc for score, doc in reranked_docs_with_scores if score > threshold
         ]
+
+        # 점수가 높은 상위 5개 문서만 사용
+        final_documents = final_documents[:5]
 
         print(f"Rerank 완료: {len(documents)}개 -> {len(final_documents)}개 필터링됨 (Threshold: {threshold})")
 
